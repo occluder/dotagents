@@ -1,6 +1,8 @@
 ---
 name: csharp-lab
-description: Creates temporary C# scripts for quick investigation, debugging, and validation without modifying the main codebase.
+description: Creates temporary C# scripts for quick investigation, debugging,
+  and validation without modifying the main codebase. Use this skill instead of
+  creating files in temporary directories.
 version: 1.1.0
 license: MIT
 tags:
