@@ -3,11 +3,12 @@ description: Implement a plan file (parallelize independent tasks)
 agent: build
 ---
 
-Implement the plan in $ARGUMENTS.
+Implement the plan in docs/$ARGUMENTS.
 
 ## Before you start
-- If $ARGUMENTS is empty or the file does not exist, stop and say so. Do not invent a plan or start coding.
+- If docs/$ARGUMENTS is empty or the file does not exist, stop and say so. Do not invent a plan or start coding.
 - Read the whole plan before editing anything. If it contradicts the codebase (missing files, renamed symbols, dead assumptions), stop and report the conflict instead of improvising a new design.
+- If there are open questions blocking the initiation, use the question tool to ask me.
 - Reply with the task list, ids and dependency order, so I can confirm your reading before you touch code.
 
 ## Execution

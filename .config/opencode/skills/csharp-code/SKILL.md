@@ -3,7 +3,7 @@ name: csharp-code
 description: >-
   Defines the user's preferred C# code style. Use when writing, reviewing, or
   refactoring C# in any project.
-version: 2.0.0
+version: 2.1.0
 license: MIT
 tags:
   - csharp
@@ -128,15 +128,62 @@ Group extensions into one broad static class per concern, not one file per type:
 
 Reach for the newest form of an idiom. Existing older code in the project is not a reason to write old C#.
 
-- Collection expressions: `List<Item> items = [];`, `[.. source]`, `Method([first, .. rest])`.
+- Collection expressions: `List<Item> items = [];`, `[.. source]`, `Method([first, .. rest])` — see *Collection expressions* below; this is the default for arrays, lists, sets and spans.
 - `field` for cached or lazy properties instead of a hand-written backing field: `public string Name => field ??= GetType().Name;`
-- Target-typed `new()` when the type is already stated (fields, or a type you keep deliberately): `readonly SemaphoreSlim _gate = new(1, 1);`, `Dictionary<string, int> counts = new();`, `new(0x5865f2)`.
+- Target-typed `new()` when the type is already stated (fields, or a type you keep deliberately): `readonly SemaphoreSlim _gate = new(1, 1);`, `new(0x5865f2)`. Collections are the exception — they take `[...]` instead.
 - Pattern matching over casts and equality checks: `x is null`, `x is not null`, `status is Status.Pending or Status.Retrying`, switch expressions ending in `_ => throw new ArgumentOutOfRangeException(nameof(x), ...)`. A null guard combined with member checks collapses into a single pattern — see *Collapse null checks into patterns* below.
 - `record` / `record struct` for data carriers, positional when the shape is the point: `public record Money(decimal Amount, string Currency);`
 - `required` and object initializers for input DTOs; `init` for immutable-after-construction data.
 - File-scoped types for helpers used by one file only: `file readonly record struct Point(int X, int Y);`
 - Raw string literals for multi-line text and prompts; interpolated raw strings (`$$"""..."""`) when the text itself contains braces.
 - `Task.WhenAll` for independent parallel I/O, built from a `Select` of tasks.
+
+# Collection expressions: write `[...]`
+
+Collections are built with brackets. `new[] { ... }`, `new List<T> { ... }`, `new List<T>()`, `Array.Empty<T>()` and `source.ToList()` all have a bracket form — use it.
+
+<bad_example>
+```csharp
+var ids = new[] { 1, 2, 3 };
+var names = new List<string> { "a", "b" };
+List<Item> items = new List<Item>();
+int[] none = Array.Empty<int>();
+var copy = source.ToArray();
+IReadOnlyList<int> ro = new List<int> { 1, 2 };
+var merged = new List<int>(first) { 99 };
+```
+</bad_example>
+
+<good_example>
+```csharp
+int[] ids = [1, 2, 3];
+List<string> names = ["a", "b"];
+List<Item> items = [];
+int[] none = [];
+int[] copy = [.. source];
+IReadOnlyList<int> ro = [1, 2];
+List<int> merged = [.. first, 99];
+```
+</good_example>
+
+Rules:
+
+- `[]` is the empty collection and beats `new()`, `new List<T>()`, `Array.Empty<T>()` and `Enumerable.Empty<T>()`. Declaring `List<T> items = [];` and then `Add`-ing in a loop is fine; reach for `new(capacity)` only when the count is genuinely known up front.
+- `[.. source]` replaces `source.ToArray()`, `source.ToList()` and `new List<T>(source)` when the point is a copy. Elements and spreads mix freely: `[first, .. rest]`, `[.. head, last]`.
+- A collection expression has no natural type, so `var` cannot be used here (`var x = [1, 2]` does not compile). State the target type once — `List<Item> items = [item];` — which still satisfies the *never write the type twice* rule, because the type appears once. Do not fall back to `var items = new List<Item> { item };` to keep `var`.
+- The target type picks the concrete collection: `IEnumerable<T>`, `ICollection<T>`, `IList<T>`, `IReadOnlyCollection<T>` and `IReadOnlyList<T>` all produce a `List<T>`; `Span<T>` / `ReadOnlySpan<T>` produce no-allocation stack or static data; `ImmutableArray<T>` and other `[CollectionBuilder]` types construct themselves.
+- Any type with a single-argument `Add` and a parameterless constructor accepts a literal: `HashSet<string> seen = ["a"];`, `SortedSet<int> levels = [3, 1];`. `Queue<T>`, `Stack<T>` and `LinkedList<T>` expose no `Add`, so they keep the constructor form (`new Queue<int>(items)`).
+- Static lookup data is a span rather than an array or a `HashSet`: `static ReadOnlySpan<char> Separators => [',', ';', '|'];`
+- Arguments are target-typed too: `string.Join(", ", [a, b, c])`, `Assert.Equal([1, 2], actual)`, `Handler([first, .. rest])`.
+- Nesting works: `int[][] grid = [[1, 2], [3, 4]];`
+
+Keep the constructor form where a literal cannot express the intent:
+
+- Capacity or comparer: `new(capacity)`, `new(StringComparer.OrdinalIgnoreCase)`.
+- Dictionaries: `Dictionary<K, V>.Add` takes two arguments, so only the empty literal is legal — `Dictionary<string, int> counts = [];` means `new()`, but `["a", 1]` does not compile. Populate with the indexer initializer instead: `Dictionary<string, int> counts = new() { ["a"] = 1 };`
+- A concrete type the target type would otherwise erase, or a type with no usable `Add`.
+
+Apply this to new and edited code only; do not rewrite collection construction in a file you are not otherwise touching.
 
 # Namespaces, usings and layout
 
@@ -161,7 +208,7 @@ Default to `var`. The type is almost always evident from the initializer, and na
 var retryCount = 0;                                  // int is obvious
 var request = new OrderRequest { Id = id };          // obvious from the initializer
 var orders = await repository.GetOrdersAsync(id);    // obvious from the call
-var map = new Dictionary<string, List<Order>>();     // a long type, said once rather than twice
+var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);  // long type, said once
 var total = items.Sum(x => x.Price);
 
 for (var i = 0; i < length; i++) { ... }
@@ -177,7 +224,7 @@ IEnumerable<Order> pending = orders.Where(IsPending); // interface is deliberate
 ReadOnlySpan<char> span = text.AsSpan();             // span/buffer locals
 ```
 
-Never write the type twice in one statement; when you do keep the type, use target-typed `new()` (`Dictionary<string, int> counts = new();`).
+Never write the type twice in one statement; when you do keep the type, use target-typed `new()` (`readonly SemaphoreSlim _gate = new(1, 1);`). Collections are the one exception: the type is written out once because a bracket literal has no natural type — `List<Item> items = [];`, `Dictionary<string, int> counts = new() { ["a"] = 1 };` — see *Collection expressions* above.
 
 # Naming
 
@@ -302,4 +349,4 @@ Before claiming a change works:
 
 1. Build with the project's own build command and leave no new warnings behind.
 2. For anything you are guessing at — serialization behaviour, LINQ semantics, async and threading, regex, framework or language-version quirks — run a throwaway experiment instead of asserting it. Prefer a scratch/experiment skill such as `csharp-lab` when it is installed; otherwise use a temporary file-based or throwaway project outside the repo. Never present untested behaviour as fact, and never fabricate output you did not produce.
-3. Re-read your own diff against this file: no reintroduced `private` on new members, no long type restated where `var` would read better, no interpolation inside log templates, no braceless single-statement `if`, no single-use helper methods, no `this.` that disambiguates nothing, and no `x is not null && x.Y …` that `x?.Y is …` states in one expression.
+3. Re-read your own diff against this file: no reintroduced `private` on new members, no long type restated where `var` would read better, no `new[] { ... }` / `new List<T> { ... }` / `Array.Empty<T>()` / `.ToList()` where `[...]` says it, no interpolation inside log templates, no braceless single-statement `if`, no single-use helper methods, no `this.` that disambiguates nothing, and no `x is not null && x.Y …` that `x?.Y is …` states in one expression.
